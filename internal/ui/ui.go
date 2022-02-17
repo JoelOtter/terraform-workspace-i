@@ -2,20 +2,21 @@ package ui
 
 import (
 	"fmt"
-	"github.com/JoelOtter/git-branch-i/internal/git"
+	"github.com/JoelOtter/terraform-workspace-i/internal/terraform"
 	"github.com/gdamore/tcell/v2"
 	"github.com/mattn/go-runewidth"
 	"io"
+	"os"
 	"strings"
 )
 
 type ui struct {
-	screen       tcell.Screen
-	branches     []git.Branch
-	repoRoot     string
-	pointer      int
-	deleteBranch string
-	quit         chan struct{}
+	screen          tcell.Screen
+	workspaces      []terraform.Workspace
+	modulePath      string
+	pointer         int
+	deleteWorkspace string
+	quit            chan struct{}
 }
 
 func (u *ui) drawStr(x int, y int, style tcell.Style, str string) {
@@ -34,21 +35,21 @@ func (u *ui) drawStr(x int, y int, style tcell.Style, str string) {
 
 func (u *ui) draw() {
 	u.screen.Clear()
-	u.drawStr(1, 1, tcell.StyleDefault.Bold(true), u.repoRoot)
-	for i, branch := range u.branches {
-		if branch.Current {
+	u.drawStr(1, 1, tcell.StyleDefault.Bold(true), u.modulePath)
+	for i, workspace := range u.workspaces {
+		if workspace.Current {
 			u.screen.SetCell(1, i+3, tcell.StyleDefault, '*')
 		}
 		style := tcell.StyleDefault
-		if branch.Current {
+		if workspace.Current {
 			style = style.Bold(true)
 		}
 		if i == u.pointer {
 			style = style.Reverse(true)
 		}
-		u.drawStr(3, i+3, style, branch.Name)
+		u.drawStr(3, i+3, style, workspace.Name)
 	}
-	if u.deleteBranch != "" {
+	if u.deleteWorkspace != "" {
 		w, h := u.screen.Size()
 		for i := 1; i < w-1; i++ {
 			u.screen.SetCell(i, h-2, tcell.StyleDefault.Background(tcell.ColorRed))
@@ -57,21 +58,21 @@ func (u *ui) draw() {
 			2,
 			h-2,
 			tcell.StyleDefault.Background(tcell.ColorRed).Foreground(tcell.ColorBlack),
-			fmt.Sprintf("Delete branch %s (y/n)? ", u.deleteBranch),
+			fmt.Sprintf("Delete workspace %s (y/n)? ", u.deleteWorkspace),
 		)
 	}
 	u.screen.Show()
 }
 
 func (u *ui) keyDown() {
-	u.pointer = (u.pointer + 1) % len(u.branches)
+	u.pointer = (u.pointer + 1) % len(u.workspaces)
 	u.draw()
 }
 
 func (u *ui) keyUp() {
 	u.pointer = u.pointer - 1
 	if u.pointer < 0 {
-		u.pointer = len(u.branches) - 1
+		u.pointer = len(u.workspaces) - 1
 	}
 	u.draw()
 }
@@ -86,14 +87,14 @@ func (u *ui) run(uiOut io.Writer, uiErr *error) {
 			case tcell.KeyEscape, tcell.KeyCtrlC:
 				return
 			case tcell.KeyEnter:
-				*uiErr = git.ChangeBranch(u.branches[u.pointer].Name, uiOut)
+				*uiErr = terraform.ChangeWorkspace(u.workspaces[u.pointer].Name, uiOut)
 				return
 			case tcell.KeyUp, tcell.KeyPgUp, tcell.KeyCtrlP:
 				u.keyUp()
 			case tcell.KeyDown, tcell.KeyPgDn, tcell.KeyCtrlN:
 				u.keyDown()
 			case tcell.KeyDelete, tcell.KeyBackspace, tcell.KeyDEL:
-				u.deleteBranch = u.branches[u.pointer].Name
+				u.deleteWorkspace = u.workspaces[u.pointer].Name
 				u.draw()
 			case tcell.KeyRune:
 				switch ev.Rune() {
@@ -102,12 +103,12 @@ func (u *ui) run(uiOut io.Writer, uiErr *error) {
 				case 'k':
 					u.keyUp()
 				case 'y':
-					if u.deleteBranch != "" {
-						u.branches, *uiErr = git.DeleteBranch(u.deleteBranch, uiOut)
+					if u.deleteWorkspace != "" {
+						u.workspaces, *uiErr = terraform.DeleteWorkspace(u.deleteWorkspace, uiOut)
 						if *uiErr != nil {
 							return
 						}
-						u.deleteBranch = ""
+						u.deleteWorkspace = ""
 						u.pointer = u.pointer - 1
 						if u.pointer < 0 {
 							u.pointer = 0
@@ -115,12 +116,12 @@ func (u *ui) run(uiOut io.Writer, uiErr *error) {
 						u.draw()
 					}
 				case 'n':
-					if u.deleteBranch != "" {
-						u.deleteBranch = ""
+					if u.deleteWorkspace != "" {
+						u.deleteWorkspace = ""
 					}
 					u.draw()
 				case 'd':
-					u.deleteBranch = u.branches[u.pointer].Name
+					u.deleteWorkspace = u.workspaces[u.pointer].Name
 					u.draw()
 				}
 			}
@@ -131,7 +132,7 @@ func (u *ui) run(uiOut io.Writer, uiErr *error) {
 	}
 }
 
-func ShowUI(branches []git.Branch) error {
+func ShowUI(workspaces []terraform.Workspace) error {
 	tcell.SetEncodingFallback(tcell.EncodingFallbackASCII)
 	screen, err := tcell.NewScreen()
 	if err != nil {
@@ -149,18 +150,18 @@ func ShowUI(branches []git.Branch) error {
 		}
 	}()
 
-	gitRoot, err := git.GetRepoRoot(uiOut)
+	moduleRoot, err := os.Getwd()
 	if err != nil {
-		return fmt.Errorf("failed to get repo root: %w", err)
+		return fmt.Errorf("failed to get module root: %w", err)
 	}
 
 	u := &ui{
-		screen:       screen,
-		branches:     branches,
-		repoRoot:     gitRoot,
-		pointer:      getInitialPointer(branches),
-		deleteBranch: "",
-		quit:         make(chan struct{}),
+		screen:          screen,
+		workspaces:      workspaces,
+		modulePath:      moduleRoot,
+		pointer:         getInitialPointer(workspaces),
+		deleteWorkspace: "",
+		quit:            make(chan struct{}),
 	}
 	u.draw()
 
@@ -176,9 +177,9 @@ func ShowUI(branches []git.Branch) error {
 	}
 }
 
-func getInitialPointer(branches []git.Branch) int {
-	for i, branch := range branches {
-		if branch.Current {
+func getInitialPointer(workspaces []terraform.Workspace) int {
+	for i, workspace := range workspaces {
+		if workspace.Current {
 			return i
 		}
 	}

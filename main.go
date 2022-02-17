@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/JoelOtter/git-branch-i/internal/git"
-	"github.com/JoelOtter/git-branch-i/internal/ui"
+	"github.com/JoelOtter/terraform-workspace-i/internal/terraform"
+	"github.com/JoelOtter/terraform-workspace-i/internal/ui"
 	"github.com/spf13/cobra"
 	"log"
 	"os"
@@ -15,11 +15,11 @@ func main() {
 	cmd := &cobra.Command{
 		Use: "git-branch-i",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			branches, err := git.GetBranches()
+			workspaces, err := terraform.GetWorkspaces()
 			if err != nil {
 				return err
 			}
-			if err := ui.ShowUI(branches); err != nil {
+			if err := ui.ShowUI(workspaces); err != nil {
 				return fmt.Errorf("failed to show UI: %w", err)
 			}
 			return nil
