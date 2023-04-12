@@ -9,7 +9,7 @@ thing for Git branches.
 Install it using Go, like so:
 
 ```sh
-go install github.com/JoelOtter/terraform-workpace-i@latest
+go install github.com/JoelOtter/terraform-workspace-i@latest
 ```
 
 Ensure your Go directory is on your system path. You might want to alias this
